@@ -6,22 +6,27 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 let mixer, model;
 
+// Canvas
+const canvas = document.getElementById('webgl-canvas');
+
 // Scene
 const scene = new THREE.Scene();
 
 // Renderer
-const container = document.getElementById('container');
-const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  antialias: true,
+  alpha: true
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-container.appendChild(renderer.domElement);
 
 // Camera
 const camera = new THREE.PerspectiveCamera(
   40,
   window.innerWidth / window.innerHeight,
-  1,
+  0.1,
   100
 );
 camera.position.set(5, 2, 8);
@@ -32,7 +37,7 @@ controls.enableDamping = true;
 controls.enableZoom = false;
 controls.target.set(0, 0.7, 0);
 
-// Sky (environment)
+// Sky (lighting)
 const sky = new Sky();
 const uniforms = sky.material.uniforms;
 
@@ -47,28 +52,37 @@ const environment = pmremGenerator.fromScene(sky).texture;
 scene.environment = environment;
 scene.background = environment;
 
-// Load Model
+// Load model
 const dracoLoader = new DRACOLoader();
-dracoLoader.setDecoderPath('jsm/libs/draco/gltf/');
+dracoLoader.setDecoderPath(
+  'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/libs/draco/gltf/'
+);
 
 const loader = new GLTFLoader();
 loader.setDRACOLoader(dracoLoader);
 
-loader.load('models/gltf/LittlestTokyo.glb', (gltf) => {
-  model = gltf.scene;
+loader.load(
+  'https://threejs.org/examples/models/gltf/LittlestTokyo.glb', // ✅ use full URL for Webflow
+  (gltf) => {
+    model = gltf.scene;
 
-  model.position.set(1, 1, 0);
-  model.scale.set(0.01, 0.01, 0.01);
+    model.position.set(1, 1, 0);
+    model.scale.set(0.01, 0.01, 0.01);
 
-  scene.add(model);
+    scene.add(model);
 
-  mixer = new THREE.AnimationMixer(model);
-  mixer.clipAction(gltf.animations[0]).play();
+    mixer = new THREE.AnimationMixer(model);
+    mixer.clipAction(gltf.animations[0]).play();
 
-  animate();
-});
+    animate();
+  },
+  undefined,
+  (error) => {
+    console.error('Model failed to load:', error);
+  }
+);
 
-// Mouse
+// Mouse interaction
 const mouse = new THREE.Vector2();
 
 window.addEventListener('mousemove', (e) => {
@@ -76,16 +90,13 @@ window.addEventListener('mousemove', (e) => {
   mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
 });
 
-// Scroll
+// Scroll interaction
 window.addEventListener('scroll', () => {
   const scrollY = window.scrollY;
   const maxScroll = document.body.scrollHeight - window.innerHeight;
   const progress = scrollY / maxScroll;
 
-  // Camera zoom effect
   camera.position.z = 8 - progress * 4;
-
-  // Slight horizontal shift
   camera.position.x = 5 + progress * 2;
 });
 
@@ -100,14 +111,12 @@ function animate() {
 
   if (mixer) mixer.update(delta);
 
-  // Smooth mouse-based rotation
   if (model) {
     model.rotation.y += (mouse.x * 0.5 - model.rotation.y) * 0.05;
     model.rotation.x += (mouse.y * 0.2 - model.rotation.x) * 0.05;
   }
 
   controls.update();
-
   renderer.render(scene, camera);
 }
 
