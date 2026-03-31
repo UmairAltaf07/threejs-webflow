@@ -1,98 +1,119 @@
 import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { Sky } from 'three/addons/objects/Sky.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-			import Stats from 'three/addons/libs/stats.module.js';
+let mixer, model;
 
-			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-			import { Sky } from 'three/addons/objects/Sky.js';
+// Scene
+const scene = new THREE.Scene();
 
-			import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-			import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+// Renderer
+const container = document.getElementById('container');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+container.appendChild(renderer.domElement);
 
-			let mixer;
+// Camera
+const camera = new THREE.PerspectiveCamera(
+  40,
+  window.innerWidth / window.innerHeight,
+  1,
+  100
+);
+camera.position.set(5, 2, 8);
 
-			const timer = new THREE.Timer();
-			timer.connect( document );
-			const container = document.getElementById( 'container' );
+// Controls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enableZoom = false;
+controls.target.set(0, 0.7, 0);
 
-			const stats = new Stats();
-			container.appendChild( stats.dom );
+// Sky (environment)
+const sky = new Sky();
+const uniforms = sky.material.uniforms;
 
-			const renderer = new THREE.WebGLRenderer( { antialias: true } );
-			renderer.setPixelRatio( window.devicePixelRatio );
-			renderer.setSize( window.innerWidth, window.innerHeight );
-			renderer.toneMapping = THREE.ACESFilmicToneMapping;
-			container.appendChild( renderer.domElement );
+uniforms['turbidity'].value = 0;
+uniforms['rayleigh'].value = 3;
+uniforms['mieDirectionalG'].value = 0.7;
+uniforms['sunPosition'].value.set(-0.8, 0.19, 0.56);
 
-			const scene = new THREE.Scene();
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+const environment = pmremGenerator.fromScene(sky).texture;
 
-			// Sky
+scene.environment = environment;
+scene.background = environment;
 
-			const sky = new Sky();
+// Load Model
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath('jsm/libs/draco/gltf/');
 
-			const uniforms = sky.material.uniforms;
-			uniforms[ 'turbidity' ].value = 0;
-			uniforms[ 'rayleigh' ].value = 3;
-			uniforms[ 'mieDirectionalG' ].value = 0.7;
-			uniforms[ 'cloudElevation' ].value = 1;
-			uniforms[ 'sunPosition' ].value.set( - 0.8, 0.19, 0.56 ); // elevation: 11, azimuth: -55
+const loader = new GLTFLoader();
+loader.setDRACOLoader(dracoLoader);
 
-			const pmremGenerator = new THREE.PMREMGenerator( renderer );
-			const environment = pmremGenerator.fromScene( sky ).texture;
-			scene.background = environment;
-			scene.environment = environment;
+loader.load('models/gltf/LittlestTokyo.glb', (gltf) => {
+  model = gltf.scene;
 
-			const camera = new THREE.PerspectiveCamera( 40, window.innerWidth / window.innerHeight, 1, 100 );
-			camera.position.set( 5, 2, 8 );
+  model.position.set(1, 1, 0);
+  model.scale.set(0.01, 0.01, 0.01);
 
-			const controls = new OrbitControls( camera, renderer.domElement );
-			controls.enableDamping = true;
-			controls.target.set( 0, 0.7, 0 );
-			controls.update();
+  scene.add(model);
 
-			const dracoLoader = new DRACOLoader();
-			dracoLoader.setDecoderPath( 'jsm/libs/draco/gltf/' );
+  mixer = new THREE.AnimationMixer(model);
+  mixer.clipAction(gltf.animations[0]).play();
 
-			const loader = new GLTFLoader();
-			loader.setDRACOLoader( dracoLoader );
-			loader.load( 'models/gltf/LittlestTokyo.glb', function ( gltf ) {
+  animate();
+});
 
-				const model = gltf.scene;
-				model.position.set( 1, 1, 0 );
-				model.scale.set( 0.01, 0.01, 0.01 );
-				scene.add( model );
+// Mouse
+const mouse = new THREE.Vector2();
 
-				mixer = new THREE.AnimationMixer( model );
-				mixer.clipAction( gltf.animations[ 0 ] ).play();
+window.addEventListener('mousemove', (e) => {
+  mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+});
 
-				renderer.setAnimationLoop( animate );
+// Scroll
+window.addEventListener('scroll', () => {
+  const scrollY = window.scrollY;
+  const maxScroll = document.body.scrollHeight - window.innerHeight;
+  const progress = scrollY / maxScroll;
 
-			}, undefined, function ( e ) {
+  // Camera zoom effect
+  camera.position.z = 8 - progress * 4;
 
-				console.error( e );
+  // Slight horizontal shift
+  camera.position.x = 5 + progress * 2;
+});
 
-			} );
+// Clock
+const clock = new THREE.Clock();
 
-			window.onresize = function () {
+// Animate
+function animate() {
+  requestAnimationFrame(animate);
 
-				camera.aspect = window.innerWidth / window.innerHeight;
-				camera.updateProjectionMatrix();
+  const delta = clock.getDelta();
 
-				renderer.setSize( window.innerWidth, window.innerHeight );
+  if (mixer) mixer.update(delta);
 
-			};
+  // Smooth mouse-based rotation
+  if (model) {
+    model.rotation.y += (mouse.x * 0.5 - model.rotation.y) * 0.05;
+    model.rotation.x += (mouse.y * 0.2 - model.rotation.x) * 0.05;
+  }
 
-			function animate() {
+  controls.update();
 
-				timer.update();
+  renderer.render(scene, camera);
+}
 
-				const delta = timer.getDelta();
-
-				mixer.update( delta );
-
-				controls.update();
-
-				stats.update();
-
-				renderer.render( scene, camera );
-
-			}
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
